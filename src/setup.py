@@ -18,21 +18,15 @@ from itertools import islice
 from textwrap import fill
 from dataclasses import dataclass, astuple, asdict, fields
 import json
-from jsonschema import validate, ValidationError
-import simplejson
 import requests
 import numpy as np
 import pandas as pd
-from cycler import cycler
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib import cm
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 import seaborn as sns
-import dask
-import psycopg2
-from sqlalchemy import create_engine
 
 from sklearn.datasets import load_digits, load_breast_cancer
 from sklearn.preprocessing import StandardScaler
@@ -45,14 +39,7 @@ from sklearn.manifold import TSNE
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.feature_selection import RFECV, RFE
 
-from pymongo import MongoClient
-
 from IPython.display import Image as Show
-import nltk
-
-# Might use tokenization/stopwords
-nltk.download('punkt', quiet=True)
-nltk.download('stopwords', quiet=True)
 
 # Do not display warnings
 import warnings
@@ -61,14 +48,6 @@ warnings.simplefilter('ignore')
 # Only show 8 rows from large DataFrame
 pd.options.display.max_rows = 8
 pd.options.display.min_rows = 8
-
-# A bit of setup for monochrome book; not needed for most work
-monochrome = (cycler('color', ['k', '0.5']) * 
-              cycler('linestyle', ['-', '-.', ':']))
-plt.rcParams['axes.prop_cycle'] = monochrome
-plt.rcParams['figure.dpi'] = 100
-plt.rcParams['savefig.dpi'] = 600
-
 
 @contextmanager
 def show_more_rows(new=sys.maxsize):
@@ -81,24 +60,6 @@ def show_more_rows(new=sys.maxsize):
     finally:
         pd.options.display.max_rows = old_max
         pd.options.display.min_rows = old_min
-
-
-# PostgreSQL configuration
-def connect_local():
-    user = 'cleaning'
-    pwd = 'data'
-    host = 'localhost'
-    port = '5432'  
-    db = 'dirty'
-    con = psycopg2.connect(database=db, host=host, user=user, password=pwd)
-    engine = create_engine(f'postgresql://{user}:{pwd}@{host}:{port}/{db}')
-    return con, engine
-
-# MongoDB conection
-def connect_mongo():
-    client = MongoClient(port=27017)
-    return client
-
 
 # Utility function
 def random_phone(reserved=True):
@@ -119,93 +80,6 @@ def random_phone(reserved=True):
     return f"+1 {area} {prefix} {suffix}"
 
 
-# Make the "business" database
-def make_mongo_biz(client=connect_mongo()):
-    # Remove any existing DB and recreate it
-    client.drop_database('business')
-    db = client.business
-
-    # Create sample data
-    words = [
-        'Kitchen', 'Tasty', 'Big', 'City', 'Fish',
-        'Delight', 'Goat', 'Salty', 'Sweet']
-    title = ['Inc.', 'Restaurant', 'Take-Out']
-    cuisine = [
-        'Pizza', 'Sandwich', 'Italian', 'Mexican',
-        'American', 'Sushi', 'Vegetarian']
-    prices = ['cheap', 'reasonable', 'expensive']
-
-    seed(2)
-    info = {}
-    for n in range(50):
-        # Make a random business
-        name = (f"{choice(words)} {choice(words)} "
-                f"{choice(title)}")
-        info[name] = random_phone()
-        biz = {
-            'name': name,
-            'cuisine': choice(cuisine),
-            'phone': info[name]
-        }
-        db.info.insert_one(biz)
-        
-    for n in range(5000):
-        # Make a random review
-        name = choice(list(info))
-        price = choice(prices)
-        review = {'name': name, 'price': price}
-        
-        # Usually have a rating
-        if (n+5) % 100:
-            review['rating'] = randint(1, 10)
-            
-        # Occasionally denormalize
-        if not (n+100) % 137:
-            review['phone'] = info[name]
-            # But sometimes inconsistently
-            if not n % 5:
-                review['phone'] = random_phone()
-            
-        # Insert business into MongoDB 
-        result = db.reviews.insert_one(review)
-
-    print('Created 50 restaurants; 5000 reviews') 
-    
-
-def make_dbm_biz(client=connect_mongo()):
-    "We assume that make_mongo_biz() has run"
-    biz = client.business
-    ratings = dict()
-    
-    with dbm.open('data/keyval.db', 'n') as db:
-        db['DESCRIPTION'] = 'Restaurant information'
-        now = datetime.isoformat(datetime.now())
-        db['LAST-UPDATE'] = now
-
-        # Add reviews
-        q = biz.reviews.find()
-        for n, review in enumerate(q):
-            key = f"{review['name']}::ratings"
-            # Occasionally use unusual delimiter
-            if not (n+50) % 100:
-                key = key.replace("::", "//")
-            # First rating or apppend to list?
-            rating = str(review.get('rating', '')) 
-            if key in ratings:
-                old = ratings[key]
-                val = f"{old};{rating}"
-            else:
-                val = rating 
-            db[key] = ratings[key] = val
-        
-        # Add business info
-        for n, info in enumerate(biz.info.find()):
-            key1 = f"{info['name']}::info::phone"
-            key2 = f"{info['name']}::info::cuisine"
-            db[key1] = info['phone']
-            db[key2] = info['cuisine']
-
-
 def pprint_json(jstr):
     from json import dumps, loads
     print(dumps(loads(jstr),indent=2))
@@ -216,115 +90,6 @@ def print_err(err):
     print(fill(str(err)))
 
 
-def not_valid(instance, schema):
-    try:
-        return validate(instance, schema)
-    except ValidationError as err:
-        return str(err) 
-
-
-def make_missing_pg():
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS missing")
-    cur.execute("CREATE TABLE missing (a REAL, b CHAR(10))")
-    cur.execute("INSERT INTO missing(a, b) VALUES ('NaN', 'Not number')")
-    cur.execute("INSERT INTO missing(a, b) VALUES (1.23, 'A number')")
-    cur.execute("INSERT INTO missing(a, b) VALUES (NULL, 'A null')")
-    cur.execute("INSERT INTO missing(a, b) VALUES (3.45, 'Santiago')")
-    cur.execute("INSERT INTO missing(a, b) VALUES (6.78, '')")    
-    cur.execute("INSERT INTO missing(a, b) VALUES (9.01, NULL)")
-    con.commit()
-    cur.execute("SELECT * FROM missing")
-    return cur.fetchall()
-
-
-def make_dask_data():
-    df = dask.datasets.timeseries()
-    if not os.path.exists('data/dask'):
-        os.mkdir('data/dask')
-    df.to_csv('data/dask/*.csv', 
-              name_function=lambda i: (
-                  str(date(2000, 1, 1) + 
-                     i * timedelta(days=1)))
-             )
-
-
-def dask_to_postgres():
-    "Put some data into postgres.  Assumes Dask data was generated"
-    out = io.StringIO()
-    df = pd.read_csv('data/dask/2000-01-02.csv', parse_dates=['timestamp'])
-    df = df.loc[3456:5678]
-    df.to_sql('dask_sample', engine, if_exists='replace')
-    sql = """
-        ALTER TABLE dask_sample
-        ALTER COLUMN id TYPE smallint,
-        ALTER COLUMN name TYPE char(10),
-        ALTER COLUMN x TYPE decimal(6, 3),
-        ALTER COLUMN y TYPE real,
-        ALTER COLUMN index TYPE integer;
-        """
-    cur = con.cursor()
-    cur.execute(sql)
-    cur.execute('COMMIT;')
-    describe = """
-        SELECT column_name, data_type, numeric_precision, character_maximum_length
-        FROM information_schema.columns 
-        WHERE table_name='dask_sample';"""
-    cur.execute(describe)
-    for tup in cur:
-        print(f"{tup[0]}: {tup[1]} ({tup[2] or tup[3]})", file=out)
-    cur.execute("SELECT count(*) FROM dask_sample")
-    print("Rows:", cur.fetchone()[0], file=out)
-    return out.getvalue()
-
-
-def make_bad_amtrak():
-    "Create deliberately truncated data"
-    out = io.StringIO()
-    df = pd.read_csv('data/AMTRAK-Stations-Database_2012.csv')
-    df = df[['Code', 'StationName', 'City', 'State']]
-    df['Visitors'] = np.random.randint(0, 35_000, 973)
-    df['StationName'] = df.StationName.str.split(', ', expand=True)[0]
-    df['StationName'] = df.StationName.str[:20]
-    df['Visitors'] = np.clip(df.Visitors, 0, 2**15-1)
-    df.to_sql('bad_amtrak', engine, if_exists='replace', index=False)
-    sql = """
-        ALTER TABLE bad_amtrak
-        ALTER COLUMN "StationName" TYPE char(20),
-        ALTER COLUMN "Visitors" TYPE smallint;    
-        """
-    cur = con.cursor()
-    cur.execute(sql)
-    cur.execute('COMMIT;')
-    describe = """
-        SELECT column_name, data_type, numeric_precision, character_maximum_length
-        FROM information_schema.columns 
-        WHERE table_name='bad_amtrak';"""
-    cur.execute(describe)
-    for tup in cur:
-        print(f"{tup[0]}: {tup[1]} ({tup[2] or tup[3]})", file=out)
-    cur.execute("SELECT count(*) FROM bad_amtrak")
-    print("Rows:", cur.fetchone()[0], file=out)
-    return out.getvalue() 
-
-
-def make_h5_hierarchy():
-    import h5py
-    np.random.seed(1)  # Make the notebook generate same random data
-    f = h5py.File('data/hierarchy.h5', 'w')
-    f.create_dataset('/deeply/nested/group/my_data', 
-                     (10, 10, 10, 10), dtype='i')
-    f.create_dataset('deeply/path/elsewhere/other', (20,), dtype='i')
-    f.create_dataset('deeply/path/that_data', (5, 5), dtype='f')
-    dset = f['/deeply/nested/group/my_data']
-    np.random.seed(seed=1)
-    dset[...] = np.random.randint(-99, 99, (10, 10, 10, 10))
-    dset.attrs['author'] = 'David Mertz'
-    dset.attrs['citation'] = 'Cleaning Data Book'
-    dset.attrs['shape_type'] = '4-D integer array'
-    f.close()
-
-    
 def show_boxplots(df, cols, whis=1.5):
     # Create as many horizontal plots as we have columns
     fig, axes = plt.subplots(len(cols), 1, figsize=(10, 2*len(cols)))
