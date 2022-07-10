@@ -1,15 +1,13 @@
 name: cleaning-data-singapore
 channels:
-    - conda-forge
+  - conda-forge
 dependencies:
-    - python=3.10
-    - jupyterlab
-    - numpy
-    - matplotlib
-    - seaborn
-    - pandas
-    - scikit-learn
-    - pip
-    - requests
-    - pip:
-        - h5py
+  - python=3.10
+  - jupyterlab
+  - numpy
+  - matplotlib
+  - seaborn
+  - pandas
+  - scikit-learn
+  - pip
+  - requests
