@@ -11,7 +11,6 @@ from pprint import pprint
 from math import nan, inf, pi as π, e
 import math
 from random import seed, choice, randint, sample
-from contextlib import contextmanager
 from collections import namedtuple
 from collections import Counter
 from itertools import islice
@@ -48,18 +47,7 @@ warnings.simplefilter('ignore')
 # Only show 8 rows from large DataFrame
 pd.options.display.max_rows = 8
 pd.options.display.min_rows = 8
-
-@contextmanager
-def show_more_rows(new=sys.maxsize):
-    old_max = pd.options.display.max_rows
-    old_min = pd.options.display.min_rows
-    try:
-        pd.set_option("display.max_rows", new)
-        pd.set_option('display.min_rows', new)
-        yield old_max
-    finally:
-        pd.options.display.max_rows = old_max
-        pd.options.display.min_rows = old_min
+        
 
 # Utility function
 def random_phone(reserved=True):
@@ -105,17 +93,6 @@ def show_boxplots(df, cols, whis=1.5):
     plt.savefig(f"img/boxplot-{'_'.join(cols)}.png")
     
     
-def make_corrupt_digits():
-    from sklearn.datasets import load_digits
-    import random as r
-    r.seed(1)
-    digits = load_digits().images[:50]
-    for digit in digits:
-        for _ in range(3):
-            x, y = r.randint(0, 7), r.randint(0, 7)
-            digit[x, y] = -1
-    np.save('data/digits.npy', digits.astype(np.int8))
-
 # Load the digit data into namespace
 digits = np.load('data/digits.npy')
 
@@ -204,246 +181,6 @@ def plot_filled_trend(s=None):
     title = "Global imputation from linear trend"
     plt.title(title)
     plt.savefig(f"img/{title}.png")
-    
-
-philly = 'data/philly_houses.json'
-def make_philly_missing(fname=philly):
-    np.random.seed(1)
-    out = fname.replace('houses', 'missing')
-    rows = json.load(open(fname))['rows']
-    blank = np.random.randint(0, len(rows), 1000)
-    for num in blank:
-        rows[num]['market_value'] = np.nan
-    json.dump(rows, open(out, 'w'))
-    return rows
-
-
-def make_cars(fname='data/cars/car.data'):
-    cars = pd.read_csv(fname, header=None, 
-                       names=["price_buy",
-                              "price_maintain",
-                              "doors", 
-                              "passengers", 
-                              "trunk",
-                              "safety", 
-                              "rating"])
-    price = {'vhigh': 3, 'high': 2, 
-             'med': 1, 'low': 0}
-    cars['price_buy'] = cars.price_buy.map(price)
-    cars['price_maintain'] = cars.price_maintain.map(price)
-    cars['doors'] = cars.doors.map(
-                        {'2': 2, '3': 3,
-                         '4': 4, '5more': 5})
-    cars['passengers'] = cars.passengers.map(
-                        {'2': 2, '4': 4, 
-                         'more': 6})
-    cars['trunk'] = cars.trunk.map(
-                        {'small': 0, 'med': 1,
-                         'big': 2})
-    cars['safety'] = cars.safety.map(
-                        {'low': 0, 'med': 1, 
-                         'high': 2})
-    cars['rating'] = cars.rating.map(
-                        {'unacc': "Unacceptable",
-                         'acc': "Acceptable",
-                         'good': "Good", 
-                         'vgood': "Very Good"})
-    cars = cars.sample(frac=1, random_state=1)
-    cars.to_csv('data/cars.csv', index=False)
-
-
-def make_hair_lengths(df):
-    assert len(df) == 25_000
-    np.random.seed(1)
-    s = np.random.beta(a=1.1, b=5, size=25000) * 147
-    negate = np.random.randint(0, 25_000, 100)
-    s[negate] *= -1
-    neg_one = np.random.randint(0, 25_000, 20)
-    s[neg_one] = -1
-    zero = np.random.randint(0, 25_000, 500)
-    s[zero] = 0
-    s = np.round(s, 1)
-    df['Hair_Length'] = s
-    plt.hist(s, 50, density=True)
-    return df
-
-
-def add_typos(df):
-    from random import random, randrange
-    fnames = list(df.Name)
-    for n, name in enumerate(fnames):
-        r = random()
-        letters = list(name)
-        pos = randrange(0, len(name))
-        if r < 0.002:   # Delete a letter
-            print("Deleting letter from", name)
-            del letters[pos]
-            fnames[n] = ''.join(letters)
-        elif r < 0.004:  # Add a letter ('e')
-            print("Adding letter to", name)
-            letters.insert(pos, 'e')
-            fnames[n] = ''.join(letters)
-        elif r < 0.006:   # Swap adjacent letters
-            print("Swapping letters in", name)
-            letters[pos], letters[pos-1] = letters[pos-1], letters[pos]
-            fnames[n] = ''.join(letters)
-            
-    df['Name'] = fnames
-
-
-# Make a synthetic collection of names/ages/other
-# based on the actual SSA name frequency
-def make_ssa_synthetic(fname='data/Baby-Names-SSA.csv'):
-    # Repeatable random
-    import random
-    random.seed(1)
-
-    # Date for age calculation
-    now = 2020
-
-    # Population adjustment by year in 20Ms
-    population = np.linspace(5, 16, 100)
-    years = np.linspace(1919, 2018, 100, dtype=int)
-    year_to_pop = dict(zip(years, population))
-
-    # Rank to count
-    rank_to_freq = {'1': 1.0, '2': 0.9, '3': 0.8, 
-                    '4': 0.7, '5': 0.6}
-
-    # Read the rank popularity of names by year
-    df = pd.read_csv('data/Baby-Names-SSA.csv')
-    df = df.set_index('Year').sort_index()
-    unstack = df.unstack()
-
-    # Random features
-    colors = ('Red', 'Green', 'Blue', 
-              'Yellow', 'Purple', 'Black')
-    flowers = ('Daisy', 'Orchid', 'Rose', 
-               'Violet', 'Lily')
-
-    # Python list-of-lists to construct new data
-    rows = []
-    for (rank_gender, year), name in unstack.iteritems():
-        rank, gender = rank_gender
-        age = now - year
-        count = int(year_to_pop[year] *
-                    rank_to_freq[rank])
-        for _ in range(count):
-            color = random.choice(colors)
-            flower = random.choice(flowers)
-            rows.append(
-                (age, gender, name, color, flower))
-
-    df = pd.DataFrame(rows)
-    df.columns = ('Age', 'Gender', 'Name',
-                  'Favorite_Color', 'Favorite_Flower')
-    df = df.sample(frac=0.8, random_state=1)
-    df.to_parquet('data/usa_names_all.parq', index=False)
-    
-    # Add age-correlated flower preference
-    old = df[df.Age > 70].sample(frac=0.2, random_state=1)
-    df.loc[old.index, 'Favorite_Flower'] = 'Orchid'
-    young =df[df.Age < 30].sample(frac=0.1, random_state=1)
-    df.loc[young.index, 'Favorite_Flower'] = 'Rose'
-    
-    # Make some data missing selectively by age
-    # Missing color for all but forty 30-40 yos
-    drop = df[(df.Age > 30) & (df.Age <= 40)].index[:-40]
-    df.loc[drop, 'Favorite_Color'] = None
-
-    # Missing flower for all but forty 20-30 yos
-    drop = df[(df.Age > 20) & (df.Age <= 30)].index[:-40]
-    df.loc[drop, 'Favorite_Flower'] = None
-    
-    # Jumble the order but keep all rows then write
-    df = df.sample(frac=1.0, random_state=1)
-    df.to_parquet('data/usa_names.parq', index=False)
-
-month_names = np.array("""
-    January February March April May
-    June July August September October
-    November December""".split())
-
-def make_birth_month(ages):
-    "Artificially assign biased birth month"
-    np.random.seed(1)
-    choice = np.random.choice
-    # Just going to use plain Python, not vectorize
-    # ... speed irrelevant for few thousand values
-    mean_age = np.mean(ages)
-    birth = []
-    for age in ages:
-        # Make Jan either over- or under represented
-        bias = (age - mean_age) * 2
-        probs = [100] * 12
-        probs[0] += bias
-        probs /= np.sum(probs)
-        birth.append(choice(month_names, 1,
-                            p=probs)[0])
-    return birth
-
-
-def make_ssa_states(names='data/usa_names_all.parq',
-                    pops='data/state-population.fwf'):
-    np.random.seed(1)
-    choice = np.random.choice
-    normal = np.random.normal
-    # Assume make_ssa_synthetic() or equiv has run
-    names = pd.read_parquet(names)
-    states =  pd.read_fwf(pops)
-    
-    # Start with log population 
-    probs = np.log(states.Population_2010)
-    nudge = normal(loc=1, scale=0.2, size=len(probs))
-    probs *= nudge
-    probs /= probs.sum()
-    homes = choice(states.State, len(names), p=probs)
-    names['Home'] = homes
-    names['Birth_Month'] = make_birth_month(names.Age)
-    cols = ['Age', 'Birth_Month','Name', 'Gender', 'Home']
-    names = names[cols]
-    names.to_parquet('data/usa_names_states.parq',
-                     index=False)
-
-
-# Synthetic data to illustrate scaling
-def make_unscaled_features(N=200, j1=1/50, j2=1/10):
-    """Create DataFrame of synthetic data
-    
-    Feature_1 will be:
-      * positively correlated with Target
-      * numerically small values
-    Feature_2 will be:
-      * negatively correlatged with Target
-      * numerically large values
-    
-    N  - number of rows to geneate
-    j1 - the relative scale of random jitter for F1
-    j2 - the relative scale of random jitter for F2
-    """
-    assert j2 > j1
-    # Repeatable randomness
-    np.random.seed(1)
-    
-    # Target points range from 10 to 20
-    target = np.linspace(10, 20, N)
-    
-    # Feature_1 is roughly 1/100th size of Target
-    feat1 = target / 100
-    feat1 += np.random.normal(
-        loc=0, scale=np.max(feat1)*j1, size=N) 
-
-    # Feature_2 is around 20,000
-    feat2 = np.linspace(21_000, 19_000, N)
-    feat2 += np.random.normal(
-        loc=0, scale=np.max(feat2)*j2, size=N)
-
-    df = pd.DataFrame({'Feature_1': feat1, 
-                       'Feature_2': feat2, 
-                       'Target': target})
-    return (df.sample(frac=1)
-              .reset_index()
-              .drop('index', axis=1))
 
 
 def plot_univariate_trends(df, Target='Target'):
@@ -537,4 +274,3 @@ def plot_digits(data, digits,
                  fontdict={'size': 9})
     plt.title(f"{decomp} Decomposition")
     plt.savefig(f"img/{decomp}-decomposition.png")
-
