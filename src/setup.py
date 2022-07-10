@@ -44,40 +44,6 @@ from IPython.display import Image as Show
 import warnings
 warnings.simplefilter('ignore')
 
-# Only show 8 rows from large DataFrame
-pd.options.display.max_rows = 8
-pd.options.display.min_rows = 8
-        
-
-# Utility function
-def random_phone(reserved=True):
-    digits = '0123456789'
-    area = '000'
-    while area.startswith('0'):
-        area = ''.join(sample(digits, 3))
-    # DO NOT REMOVE prefix code
-    # it is not used now, but random seed assumes
-    # the exact same sequence of calls
-    prefix = '000'
-    while prefix.startswith('0'):
-        prefix = ''.join(sample(digits, 3))
-    suffix = ''.join(sample(digits, 4))
-    #-------------------------------------
-    if reserved:
-        prefix = "555"
-    return f"+1 {area} {prefix} {suffix}"
-
-
-def pprint_json(jstr):
-    from json import dumps, loads
-    print(dumps(loads(jstr),indent=2))
-
-    
-def print_err(err):
-    print(err.__class__.__name__)
-    print(fill(str(err)))
-
-
 def show_boxplots(df, cols, whis=1.5):
     # Create as many horizontal plots as we have columns
     fig, axes = plt.subplots(len(cols), 1, figsize=(10, 2*len(cols)))
@@ -90,7 +56,7 @@ def show_boxplots(df, cols, whis=1.5):
         axes[n].set_yticks([])
     # Fix spacing of subplots at the end
     fig.tight_layout()
-    plt.savefig(f"img/boxplot-{'_'.join(cols)}.png")
+    return plt
     
     
 # Load the digit data into namespace
@@ -124,7 +90,7 @@ def show_digits(digits=digits, x=3, y=3, title="Digits"):
                                ha="center", va="center")
     fig.suptitle(title, y=0)
     fig.tight_layout()    
-    plt.savefig(f'img/{title}.png')
+    return plt 
                 
 
 kryptonite = pd.read_fwf('data/excited-kryptonite.fwf')
@@ -152,7 +118,7 @@ def plot_kryptonite(df=kryptonite,
     if imputed:
         title = f"{title} (imputed)"
     ax.set_title(title)
-    plt.savefig(f"img/{title}.png")
+    return plt
 
 DTI = pd.DatetimeIndex
 date_series = pd.Series(
@@ -180,7 +146,7 @@ def plot_filled_trend(s=None):
     plt.legend()
     title = "Global imputation from linear trend"
     plt.title(title)
-    plt.savefig(f"img/{title}.png")
+    return plt
 
 
 def plot_univariate_trends(df, Target='Target'):
@@ -194,7 +160,7 @@ def plot_univariate_trends(df, Target='Target'):
         ax.plot(target, X[col])
         ax.set_title(f"{col} as a function of {Target}")
     fig.tight_layout()
-    plt.savefig(f'img/univariate-{"_".join(X.columns)}:{Target}.png')
+    return plt
     
 
 def read_glarp(cleanup=True):
@@ -243,7 +209,6 @@ def get_digits():
                        digits.images):
         ax.imshow(img, cmap=plt.get_cmap('Greys'))
     fig.tight_layout()
-    fig.savefig("img/first-10-digits.png")
     return digits
 
 
@@ -273,4 +238,4 @@ def plot_digits(data, digits,
                      digits.target[i]],
                  fontdict={'size': 9})
     plt.title(f"{decomp} Decomposition")
-    plt.savefig(f"img/{decomp}-decomposition.png")
+    return plt
